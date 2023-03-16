@@ -1,0 +1,26 @@
+﻿@model VerifyPhoneNumberViewModel
+@{
+    ViewData["Title"] = "Verify Phone Number";
+}
+
+<h2>@ViewData["Title"].</h2>
+
+<form asp-controller="Manage" asp-action="VerifyPhoneNumber" asp-route-returnurl="@ViewData["ReturnUrl"]" method="post" class="form-horizontal" role="form">
+    <input asp-for="PhoneNumber" type="hidden" />
+    <h4>Add a phone number.</h4>
+    <h5>@ViewData["Status"]</h5>
+    <hr />
+    <div asp-validation-summary="All" class="text-danger"></div>
+    <div class="form-floating">
+        <input asp-for="Code" class="form-control" />
+        <label asp-for="Code" class="form-label"></label>
+        <span asp-validation-for="Code" class="text-danger"></span>
+    </div>
+    <div>
+        <button type="submit" class="w-100 btn btn-lg btn-primary">Submit</button>
+    </div>
+</form>
+
+@section Scripts {
+    @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
+}
