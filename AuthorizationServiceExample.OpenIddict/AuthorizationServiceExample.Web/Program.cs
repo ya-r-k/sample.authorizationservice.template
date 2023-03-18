@@ -1,4 +1,5 @@
 using AuthorizationServiceExample.Di;
+using AuthorizationServiceExample.Web.Extensions;
 using OpenIddict.Abstractions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,7 +16,6 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
 builder.Services.ConfigureAspNetCoreIdentity();
-
 builder.Services.ConfigureOpenIddict(builder.Configuration);
 
 builder.Services.AddBllServices();
@@ -73,6 +73,8 @@ else
 }
 
 app.UseHttpsRedirection();
+
+app.UseDefaultContentSecurityPolicy(app.Environment);
 app.UseStaticFiles();
 
 app.UseRouting();
