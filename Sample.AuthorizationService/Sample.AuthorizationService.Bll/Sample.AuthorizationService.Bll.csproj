@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+	
+  <ItemGroup>
+    <PackageReference Include="OpenIddict" Version="4.5.0" />
+  </ItemGroup>
+	
+  <ItemGroup>
+    <ProjectReference Include="..\Sample.AuthorizationService.Common\Sample.AuthorizationService.Common.csproj" />
+    <ProjectReference Include="..\Sample.AuthorizationService.Dal\Sample.AuthorizationService.Dal.csproj" />
+  </ItemGroup>
+
+</Project>
