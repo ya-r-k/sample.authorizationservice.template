@@ -1,26 +1,66 @@
 version: '3.8'
 
 services:
-  sample-authorizationservice:
-    image: ${DOCKER_REGISTRY-}sample-authorizationservice
+  sample.authorizationservice:
+    image: ${DOCKER_REGISTRY-}sample.authorizationservice
+    build:
+      context: .
+      dockerfile: Sample.AuthorizationService.Web/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=https://+:443;http://+:80
+      - Serilog__WriteTo__2__Args__nodeUris=http://elasticsearchserver:9200
     ports:
       - '5234:80'
       - '7178:443'
     volumes:
+      - ../logs:/logs/samples/authorizationservice
       - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
       - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https:ro
-    build:
-      context: .
-      dockerfile: Sample.AuthorizationService.Web/Dockerfile
 
-  sample-database-server:
-    container_name: sample-database-server
+  sample.databaseserver:
+    container_name: sample.databaseserver
     image: mcr.microsoft.com/mssql/server:2022-latest
     ports:
       - '1433:1433'
     environment:
       SA_PASSWORD: '#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87'
       ACCEPT_EULA: 'Y'
+
+  # prometheusserver:
+  #   image: prom/prometheus
+  #   ports:
+  #     - 9090:9090
+  #   volumes:
+  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - ../prometheus/config:/etc/prometheus
+  #     - ../prometheus/data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+
+  # grafanaserver:
+  #   image: grafana/grafana
+  #   ports:
+  #     - 3000:3000
+  #   volumes:
+  #     - ../grafana/data:/var/lib/grafana
+  #     - ../grafana/provisioning:/etc/grafana/provisioning
+  #   environment:
+  #     - GF_SECURITY_ADMIN_USER=admin
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+
+  # elasticsearchserver:
+  #   image: elasticsearch:7.15.1
+  #   ports:
+  #     - 9200:9200
+  #   environment:
+  #     - discovery.type=single-node
+  #   volumes:
+  #     - ../elasticsearch/data:/usr/share/elasticsearch/data
+
+  # kibanaserver:
+  #   image: kibana:7.15.1
+  #   ports:
+  #     - 5601:5601
+  #   environment:
+  #     - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
