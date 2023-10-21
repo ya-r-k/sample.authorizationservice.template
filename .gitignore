@@ -1,4 +1,31 @@
+# ASP.NET Core
+
 **/bin/
 **/obj/
-**/.vs/
 **/wwwroot/lib/
+
+# Dependencies
+
+**/prometheus
+**/elasticsearch
+**/data
+**/grafana
+**/logs
+
+# Visual Studio files
+**/.vs/
+**/*.suo
+**/*.user
+**/*.userosscache
+**/*.sln.docstates
+
+# Resharper
+**/_resharper/
+
+# Build results
+**/[Bb]uild/
+
+# NuGet Packages
+**/*.nupkg
+**/packages/
+!**/packages/repositories.config

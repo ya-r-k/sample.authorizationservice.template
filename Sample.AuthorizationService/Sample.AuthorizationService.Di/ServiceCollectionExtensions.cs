@@ -11,7 +11,6 @@ using Microsoft.Extensions.Hosting;
 using OpenIddict.Abstractions;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Sample.AuthorizationService.Common.Helpers;
 
 namespace Sample.AuthorizationService.Di;
 
@@ -30,13 +29,13 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection ConfigureOpenIddict(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment)
+    public static IServiceCollection ConfigureOpenIddict(this IServiceCollection services, IConfiguration configuration, IWebHostEnvironment environment, bool isRunningInContainer)
     {
         services.AddDbContextFactory<ApplicationDbContext>(options =>
         {
-            options.UseSqlServer(EnvironmentHelper.IsApplicationRunningInContainer()
-                ? configuration.GetConnectionString("ContainerConnection")
-                : configuration.GetConnectionString("DefaultConnection"));
+            options.UseSqlServer(isRunningInContainer
+                ? configuration.GetConnectionString("Docker")
+                : configuration.GetConnectionString("Default"));
 
             options.UseOpenIddict();
         });
