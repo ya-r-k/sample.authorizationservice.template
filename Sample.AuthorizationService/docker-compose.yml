@@ -1,53 +1,65 @@
-version: '3.8'
-
 services:
-  sample.authorizationservice:
-    image: ${DOCKER_REGISTRY-}sample.authorizationservice
+  authorizationservice:
+    container_name: authservice-authorizationservice
+    image: ${DOCKER_REGISTRY-}authorizationservice
     build:
       context: .
       dockerfile: Sample.AuthorizationService.Web/Dockerfile
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
-      - ASPNETCORE_URLS=https://+:443;http://+:80
-      - Serilog__WriteTo__2__Args__nodeUris=http://elasticsearchserver:9200
+      - ASPNETCORE_HTTP_PORTS=5234
+      - ASPNETCORE_HTTPS_PORTS=7178
     ports:
-      - '5234:80'
-      - '7178:443'
+      - '5234:5234'
+      - '7178:7178'
     volumes:
-      - ../logs:/logs/samples/authorizationservice
-      - ${APPDATA}/Microsoft/UserSecrets:/root/.microsoft/usersecrets:ro
-      - ${APPDATA}/ASP.NET/Https:/root/.aspnet/https:ro
+      - ./logs:/logs/samples/authorizationservice
+      - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
+      - ${USERPROFILE}/.aspnet/https:/home/app/.aspnet/https:ro
 
-  sample.databaseserver:
-    container_name: sample.databaseserver
+  mssqldb:
+    container_name: authservice-mssqldb
     image: mcr.microsoft.com/mssql/server:2022-latest
-    ports:
-      - '1433:1433'
     environment:
       SA_PASSWORD: '#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87'
       ACCEPT_EULA: 'Y'
+    ports:
+      - '1433:1433'
 
-  # prometheusserver:
-  #   image: prom/prometheus
-  #   ports:
-  #     - 9090:9090
-  #   volumes:
-  #     - ./prometheus.yml:/etc/prometheus/prometheus.yml
-  #     - ../prometheus/config:/etc/prometheus
-  #     - ../prometheus/data:/prometheus
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  prometheus:
+    container_name: authservice-prometheus
+    image: prom/prometheus:latest
+    ports:
+      - 9090:9090
+    volumes:
+      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-data:/prometheus
 
-  # grafanaserver:
-  #   image: grafana/grafana
-  #   ports:
-  #     - 3000:3000
-  #   volumes:
-  #     - ../grafana/data:/var/lib/grafana
-  #     - ../grafana/provisioning:/etc/grafana/provisioning
-  #   environment:
-  #     - GF_SECURITY_ADMIN_USER=admin
-  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  grafana:
+    container_name: authservice-grafana
+    image: grafana/grafana:latest
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+    ports:
+      - 3000:3000
+    volumes:
+      - ./grafana-data:/var/lib/grafana
+
+  node-exporter:
+    container_name: authservice-node-exporter
+    image: quay.io/prometheus/node-exporter:latest
+    ports:
+      - 9100:9100
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
 
   # elasticsearchserver:
   #   image: elasticsearch:7.15.1

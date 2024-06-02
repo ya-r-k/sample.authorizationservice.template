@@ -19,37 +19,6 @@ builder.Logging.AddSerilog(new LoggerConfiguration()
     .ReadFrom.Configuration(configuration)
     .CreateLogger());
 
-if (isRunningInContainer)
-{
-    builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-    {
-        serverOptions.ListenAnyIP(443, listenOptions =>
-        {
-            listenOptions.UseHttps(httpsOptions =>
-            {
-                var localhostCert = new X509Certificate2(configuration["Certificates:Localhost:Path"], configuration["Certificates:Localhost:Password"]);
-                var remoteCert = new X509Certificate2(configuration["Certificates:Remote:Path"], configuration["Certificates:Remote:Password"]);
-
-                var certs = new Dictionary<string, X509Certificate2>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["localhost"] = localhostCert,
-                    ["sample.authorizationservice"] = remoteCert,
-                };
-
-                httpsOptions.ServerCertificateSelector = (connectionContext, name) =>
-                {
-                    if (name is not null && certs.TryGetValue(name, out var cert))
-                    {
-                        return cert;
-                    }
-
-                    return localhostCert;
-                };
-            });
-        });
-    });
-}
-
 // Configure connection to database
 var connectionString = isRunningInContainer
     ? configuration.GetConnectionString("Docker")

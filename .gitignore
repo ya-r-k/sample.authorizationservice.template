@@ -6,10 +6,10 @@
 
 # Dependencies
 
-**/prometheus
+**/prometheus-data
 **/elasticsearch
 **/data
-**/grafana
+**/grafana-data
 **/logs
 
 # Visual Studio files
