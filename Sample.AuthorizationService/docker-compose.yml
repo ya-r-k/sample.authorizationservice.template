@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   authorizationservice:
     container_name: authservice-authorizationservice
@@ -9,6 +11,7 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=5234
       - ASPNETCORE_HTTPS_PORTS=7178
+      - ConnectionStrings__Docker=Server=mssqldb;Database=AuthorizationService;User Id=sa;Password=#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87;TrustServerCertificate=True
     ports:
       - '5234:5234'
       - '7178:7178'
@@ -16,41 +19,104 @@ services:
       - ./logs:/logs/samples/authorizationservice
       - ${APPDATA}/Microsoft/UserSecrets:/home/app/.microsoft/usersecrets:ro
       - ${USERPROFILE}/.aspnet/https:/home/app/.aspnet/https:ro
+    depends_on:
+      - mssqldb
+      - prometheus
+    networks:
+      - auth-network
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:5234/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   mssqldb:
     container_name: authservice-mssqldb
     image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
-      SA_PASSWORD: '#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87'
       ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: '#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87'
+      MSSQL_PID: 'Express'
     ports:
       - '1433:1433'
+    volumes:
+      - mssql-data:/var/opt/mssql
+    networks:
+      - auth-network
+    healthcheck:
+      test: /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "#&E*ye76t&#YGet8q7#*&YTtw8qytt&E7t378ET78etW*87" -Q "SELECT 1" || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   prometheus:
     container_name: authservice-prometheus
     image: prom/prometheus:latest
     ports:
-      - 9090:9090
+      - '9090:9090'
     volumes:
-      - ../prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus-data:/prometheus
+      - ./Sample.AuthorizationService.Web/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - auth-network
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '-q',
+          '--tries=1',
+          'http://localhost:9090/-/healthy',
+          '-O',
+          '/dev/null',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   grafana:
     container_name: authservice-grafana
     image: grafana/grafana:latest
+    ports:
+      - '3000:3000'
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_SECURITY_ADMIN_USER=admin
-    ports:
-      - 3000:3000
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_AUTH_ANONYMOUS_ENABLED=false
     volumes:
-      - ./grafana-data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
+      - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/auth-dashboard.json:ro
+    depends_on:
+      - prometheus
+    networks:
+      - auth-network
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '-q',
+          '--tries=1',
+          'http://localhost:3000/api/health',
+          '-O',
+          '/dev/null',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   node-exporter:
     container_name: authservice-node-exporter
     image: quay.io/prometheus/node-exporter:latest
     ports:
-      - 9100:9100
+      - '9100:9100'
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
@@ -60,19 +126,34 @@ services:
       - '--path.rootfs=/rootfs'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - auth-network
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'wget',
+          '-q',
+          '--tries=1',
+          'http://localhost:9100/metrics',
+          '-O',
+          '/dev/null',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  # elasticsearchserver:
-  #   image: elasticsearch:7.15.1
-  #   ports:
-  #     - 9200:9200
-  #   environment:
-  #     - discovery.type=single-node
-  #   volumes:
-  #     - ../elasticsearch/data:/usr/share/elasticsearch/data
+networks:
+  auth-network:
+    driver: bridge
 
-  # kibanaserver:
-  #   image: kibana:7.15.1
-  #   ports:
-  #     - 5601:5601
-  #   environment:
-  #     - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+volumes:
+  mssql-data:
+    name: authservice_mssql_data
+    external: true
+  prometheus_data:
+    name: authservice_prometheus_data
+    external: true
+  grafana_data:
+    name: authservice_grafana_data
+    external: true

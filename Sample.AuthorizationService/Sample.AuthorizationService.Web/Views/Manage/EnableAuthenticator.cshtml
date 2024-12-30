@@ -1,0 +1,68 @@
+@model EnableAuthenticatorViewModel
+@{
+    ViewData["Title"] = "Настройка приложения-аутентификатора";
+    ViewData["ActivePage"] = ManageNavPages.TwoFactorAuthentication;
+    Layout = "_ManageLayout";
+}
+
+<div class="ms-Card">
+    <div class="ms-Card-header">
+        <h2 class="ms-FontSize-24 ms-FontWeight-semibold">@ViewData["Title"]</h2>
+    </div>
+    <div class="ms-Card-content">
+        <div class="ms-MessageBar ms-MessageBar--info">
+            <div class="ms-MessageBar-content">
+                <i class="ms-Icon ms-Icon--Info" aria-hidden="true"></i>
+                <span class="ms-MessageBar-text">
+                    Для использования приложения-аутентификатора выполните следующие шаги:
+                </span>
+            </div>
+        </div>
+
+        <ol class="ms-List">
+            <li class="ms-ListItem">
+                Скачайте приложение двухфакторной аутентификации, например:
+                <ul class="ms-List">
+                    <li class="ms-ListItem">
+                        <a href="https://go.microsoft.com/fwlink/?Linkid=825072">Microsoft Authenticator</a>
+                    </li>
+                    <li class="ms-ListItem">
+                        <a href="https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2">Google Authenticator</a>
+                    </li>
+                </ul>
+            </li>
+            <li class="ms-ListItem">
+                Отсканируйте QR-код или введите ключ вручную:
+                <div class="ms-TextField">
+                    <label class="ms-Label">Ключ: @Model.SharedKey</label>
+                </div>
+                <div class="qr-code-container">
+                    <img src="@Url.Action("GenerateQrCode", new { qrCodeUri = Model.AuthenticatorUri })"
+                         alt="QR Code" />
+                </div>
+            </li>
+            <li class="ms-ListItem">
+                После сканирования QR-кода или ввода ключа, приложение покажет 6-значный код.
+                Введите его ниже:
+            </li>
+        </ol>
+
+        <form method="post">
+            <div asp-validation-summary="ModelOnly" class="ms-MessageBar ms-MessageBar--error"></div>
+
+            <div class="ms-TextField">
+                <label asp-for="Code" class="ms-Label"></label>
+                <input asp-for="Code" class="ms-TextField-field" autocomplete="off" />
+                <span asp-validation-for="Code" class="ms-TextField-errorMessage"></span>
+            </div>
+
+            <button type="submit" class="ms-Button ms-Button--primary">
+                <span class="ms-Button-label">Подтвердить</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+} 

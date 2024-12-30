@@ -1,0 +1,34 @@
+@model ShowRecoveryCodesViewModel
+@{
+    ViewData["Title"] = "Коды восстановления";
+    ViewData["ActivePage"] = ManageNavPages.TwoFactorAuthentication;
+    Layout = "_ManageLayout";
+}
+
+<div class="ms-Card">
+    <div class="ms-Card-header">
+        <h2 class="ms-FontSize-24 ms-FontWeight-semibold">@ViewData["Title"]</h2>
+    </div>
+    <div class="ms-Card-content">
+        <div class="ms-MessageBar ms-MessageBar--warning">
+            <div class="ms-MessageBar-content">
+                <i class="ms-Icon ms-Icon--Warning" aria-hidden="true"></i>
+                <span class="ms-MessageBar-text">
+                    Сохраните эти коды в надежном месте.
+                    Если вы потеряете доступ к устройству с аутентификатором, они помогут восстановить доступ к аккаунту.
+                </span>
+            </div>
+        </div>
+
+        <div class="recovery-codes ms-fontSize-14">
+            @foreach (var code in Model.RecoveryCodes)
+            {
+                <div class="ms-Grid-row">
+                    <div class="ms-Grid-col ms-sm12">
+                        <code class="ms-fontWeight-semibold">@code</code>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div> 

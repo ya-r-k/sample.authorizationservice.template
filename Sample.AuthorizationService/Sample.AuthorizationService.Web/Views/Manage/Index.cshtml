@@ -1,79 +1,97 @@
-﻿@model IndexViewModel
+﻿@model ProfileViewModel
 @{
-    ViewData["Title"] = "Manage your account";
+    ViewData["Title"] = "Профиль";
+    ViewData["ActivePage"] = ManageNavPages.Index;
+    Layout = "_ManageLayout";
 }
 
-<h2>@ViewData["Title"].</h2>
-<p class="text-success">@ViewData["StatusMessage"]</p>
-<div>
-    <h4>Change your account settings</h4>
-    <hr />
-    <dl class="dl-horizontal">
-        <dt>Password:</dt>
-        <dd>
-            [
-            @if (Model.HasPassword)
-            {
-                <a asp-controller="Manage" asp-action="ChangePassword">Change</a>
-            }
-            else
-            {
-                <a asp-controller="Manage" asp-action="SetPassword">Create</a>
-            }
-            ]
-        </dd>
-        <dt>External Logins:</dt>
-        <dd>
+<div class="ms-Card">
+    <div class="ms-Card-header">
+        <h2 class="ms-FontSize-24 ms-FontWeight-semibold">@ViewData["Title"]</h2>
+    </div>
+    <div class="ms-Card-content">
+        <form method="post" asp-action="UpdateProfile">
+            <div asp-validation-summary="ModelOnly" class="ms-MessageBar ms-MessageBar--error"></div>
 
-            @Model.Logins.Count [<a asp-controller="Manage" asp-action="ManageLogins">Manage</a>]
-        </dd>
+            <div class="ms-Grid-row">
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="GivenName" class="ms-Label"></label>
+                        <input asp-for="GivenName" class="ms-TextField-field" />
+                        <span asp-validation-for="GivenName" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="FamilyName" class="ms-Label"></label>
+                        <input asp-for="FamilyName" class="ms-TextField-field" />
+                        <span asp-validation-for="FamilyName" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+            </div>
 
+            <div class="ms-Grid-row">
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="MiddleName" class="ms-Label"></label>
+                        <input asp-for="MiddleName" class="ms-TextField-field" />
+                        <span asp-validation-for="MiddleName" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="Nickname" class="ms-Label"></label>
+                        <input asp-for="Nickname" class="ms-TextField-field" />
+                        <span asp-validation-for="Nickname" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+            </div>
 
-        <dt>Phone Number:</dt>
-        <dd>
-            <p>
-                Phone Numbers can used as a second factor of verification in two-factor authentication.
-                See <a href="http://go.microsoft.com/fwlink/?LinkID=532713">this article</a>
-                for details on setting up this ASP.NET application to support two-factor authentication using SMS.
-            </p>
-            @*@(Model.PhoneNumber ?? "None") [
-                @if (Model.PhoneNumber != null)
-                {
-                    <a asp-controller="Manage" asp-action="AddPhoneNumber">Change</a>
-                        @: &nbsp;|&nbsp;
-                        <a asp-controller="Manage" asp-action="RemovePhoneNumber">Remove</a>
-                }
-                else
-                {
-                    <a asp-controller="Manage" asp-action="AddPhoneNumber">Add</a>
-                }
-                ]*@
-        </dd>
+            <div class="ms-Grid-row">
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="Gender" class="ms-Label"></label>
+                        <select asp-for="Gender" asp-items="Html.GetEnumSelectList<Gender>()" class="ms-TextField-field ms-Dropdown"></select>
+                        <span asp-validation-for="Gender" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+                <div class="ms-Grid-col ms-sm6">
+                    <div class="ms-TextField">
+                        <label asp-for="BirthDate" class="ms-Label"></label>
+                        <input asp-for="BirthDate" type="date" class="ms-TextField-field" />
+                        <span asp-validation-for="BirthDate" class="ms-TextField-errorMessage"></span>
+                    </div>
+                </div>
+            </div>
 
-        <dt>Two-Factor Authentication:</dt>
-        <dd>
-            <p>
-                There are no two-factor authentication providers configured. See <a href="https://learn.microsoft.com/en-us/aspnet/core/security/authentication/social/?view=aspnetcore-7.0&tabs=visual-studio">this article</a>
-                for setting up this application to support two-factor authentication.
-            </p>
-            @*@if (Model.TwoFactor)
-                {
-                    <form asp-controller="Manage" asp-action="DisableTwoFactorAuthentication" method="post" class="form-horizontal" role="form">
-                        <text>
-                            Enabled
-                            <button type="submit" class="btn btn-link">Disable</button>
-                        </text>
-                    </form>
-                }
-                else
-                {
-                    <form asp-controller="Manage" asp-action="EnableTwoFactorAuthentication" method="post" class="form-horizontal" role="form">
-                        <text>
-                            Disabled
-                            <button type="submit" class="btn btn-link">Enable</button>
-                        </text>
-                    </form>
-                }*@
-        </dd>
-    </dl>
+            <div class="ms-TextField">
+                <label asp-for="Email" class="ms-Label"></label>
+                <div class="ms-TextField-wrapper">
+                    <input asp-for="Email" class="ms-TextField-field" disabled />
+                    @if (Model.IsEmailConfirmed)
+                    {
+                        <i class="ms-Icon ms-Icon--Completed ms-TextField-icon" aria-hidden="true"></i>
+                    }
+                    else
+                    {
+                        <i class="ms-Icon ms-Icon--Warning ms-TextField-icon" aria-hidden="true"></i>
+                    }
+                </div>
+            </div>
+
+            <div class="ms-TextField">
+                <label asp-for="PhoneNumber" class="ms-Label"></label>
+                <input asp-for="PhoneNumber" class="ms-TextField-field" />
+                <span asp-validation-for="PhoneNumber" class="ms-TextField-errorMessage"></span>
+            </div>
+
+            <button type="submit" class="ms-Button ms-Button--primary">
+                <span class="ms-Button-label">Сохранить изменения</span>
+            </button>
+        </form>
+    </div>
 </div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

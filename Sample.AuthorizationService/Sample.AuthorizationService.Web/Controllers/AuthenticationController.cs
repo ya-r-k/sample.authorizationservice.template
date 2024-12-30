@@ -1,69 +1,133 @@
-﻿using System.Security.Claims;
+﻿using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using OpenIddict.Client.AspNetCore;
-using static OpenIddict.Abstractions.OpenIddictConstants;
+using OpenIddict.Abstractions;
+using OpenIddict.Server.AspNetCore;
+using Sample.AuthorizationService.Common.Entities;
+using Sample.AuthorizationService.Web.Metrics;
+using System.Security.Claims;
 
 namespace Sample.AuthorizationService.Web.Controllers;
 
 /// <summary>
-/// Provides endpoints for the external authentication providers.
-/// Note: this controller uses the same callback action for all providers
-/// but for users who prefer using a different action per provider,
-/// the following action can be split into separate actions.
+/// Контроллер для обработки OAuth 2.0/OpenID Connect запросов.
+/// Обрабатывает основные эндпоинты для аутентификации и выдачи токенов.
 /// </summary>
 public class AuthenticationController : Controller
 {
-    /// <summary>
-    /// Log ins in the external provider
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Throws if the provider is not supported.</exception>
-    [HttpGet("~/callback/login/{provider}")]
-    [HttpPost("~/callback/login/{provider}")]
-    [IgnoreAntiforgeryToken]
-    public async Task<ActionResult> LogInCallback()
-    {
-        var result = await HttpContext.AuthenticateAsync(OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ILogger<AuthenticationController> _logger;
 
-        if (result.Principal is not ClaimsPrincipal { Identity.IsAuthenticated: true })
+    public AuthenticationController(
+        SignInManager<ApplicationUser> signInManager,
+        UserManager<ApplicationUser> userManager,
+        ILogger<AuthenticationController> logger)
+    {
+        _signInManager = signInManager;
+        _userManager = userManager;
+        _logger = logger;
+    }
+
+    [HttpPost("~/connect/token")]
+    public async Task<IActionResult> Token()
+    {
+        using (AuthMetrics.MeasureRequestDuration("token_request"))
         {
-            throw new InvalidOperationException("The external authorization data cannot be used for authentication.");
+            var request = HttpContext.GetOpenIddictServerRequest() ?? 
+                throw new InvalidOperationException("The OpenID Connect request cannot be retrieved.");
+
+            // Определяем тип grant и вызываем соответствующий обработчик
+            return request switch
+            {
+                { IsPasswordGrantType: true } => await HandlePasswordGrantType(request),
+                { IsAuthorizationCodeGrantType: true } => await HandleAuthorizationCodeGrantType(request),
+                { IsRefreshTokenGrantType: true } => await HandleRefreshTokenGrantType(request),
+                { IsClientCredentialsGrantType: true } => await HandleClientCredentialsGrantType(request),
+                _ => throw new NotImplementedException("The specified grant type is not implemented.")
+            };
+        }
+    }
+
+    private async Task<IActionResult> HandlePasswordGrantType(OpenIddictRequest request)
+    {
+        var user = await _userManager.FindByNameAsync(request.Username);
+        if (user == null || !await ValidatePassword(user, request.Password))
+        {
+            AuthMetrics.LoginAttempted(false);
+            return Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
         }
 
-        var claims = new List<Claim>(result.Principal.Claims
-            .Select(claim => claim switch
-            {
-                { Type: Claims.Subject } or
-                { Type: "id", Issuer: "https://github.com/" or "https://twitter.com/" }
-                    => new Claim(ClaimTypes.NameIdentifier, claim.Value, claim.ValueType, claim.Issuer),
-                { Type: Claims.Name }
-                    => new Claim(ClaimTypes.Name, claim.Value, claim.ValueType, claim.Issuer),
-                _ => claim
-            })
-            .Where(claim => claim switch
-            {
-                { Type: ClaimTypes.NameIdentifier or ClaimTypes.Name } => true,
-                { Type: "bio", Issuer: "https://github.com/" } => true,
-                _ => false
-            }));
+        AuthMetrics.LoginAttempted(true);
+        return await SignInUser(user);
+    }
 
-        var identity = new ClaimsIdentity(claims,
-            authenticationType: IdentityConstants.ExternalScheme,
-            nameType: ClaimTypes.NameIdentifier,
-            roleType: ClaimTypes.Role);
+    private async Task<IActionResult> HandleAuthorizationCodeGrantType(OpenIddictRequest request)
+    {
+        var result = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        var user = await _userManager.FindByIdAsync(result.Principal.GetClaim(Claims.Subject));
+        
+        return user == null ? 
+            Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme) : 
+            await SignInUser(user);
+    }
 
-        var properties = new AuthenticationProperties(result.Properties.Items);
+    private async Task<IActionResult> HandleRefreshTokenGrantType(OpenIddictRequest request)
+    {
+        var result = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        var user = await _userManager.FindByIdAsync(result.Principal.GetClaim(Claims.Subject));
+        
+        return user == null ? 
+            Forbid(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme) : 
+            await SignInUser(user);
+    }
 
-        properties.StoreTokens(result.Properties.GetTokens().Where(token => token switch
+    private async Task<IActionResult> HandleClientCredentialsGrantType(OpenIddictRequest request)
+    {
+        var application = await HttpContext.AuthenticateAsync(OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        var identity = new ClaimsIdentity(
+            authenticationType: OpenIddictServerAspNetCoreDefaults.AuthenticationScheme,
+            nameType: Claims.Name,
+            roleType: Claims.Role);
+
+        identity.AddClaim(Claims.Subject, application.Principal.GetClaim(Claims.ClientId));
+        
+        return SignIn(new ClaimsPrincipal(identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    private async Task<bool> ValidatePassword(ApplicationUser user, string password)
+    {
+        var result = await _signInManager.CheckPasswordSignInAsync(user, password, lockoutOnFailure: true);
+        return result.Succeeded;
+    }
+
+    private async Task<IActionResult> SignInUser(ApplicationUser user)
+    {
+        var claims = await GetUserClaimsAsync(user);
+        var identity = new ClaimsIdentity(claims, OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+        
+        return SignIn(new ClaimsPrincipal(identity), OpenIddictServerAspNetCoreDefaults.AuthenticationScheme);
+    }
+
+    private async Task<IEnumerable<Claim>> GetUserClaimsAsync(ApplicationUser user)
+    {
+        var claims = new List<Claim>
         {
-            {
-                Name: OpenIddictClientAspNetCoreConstants.Tokens.BackchannelAccessToken or
-                      OpenIddictClientAspNetCoreConstants.Tokens.RefreshToken
-            } => true,
-            _ => false
-        }));
+            new(Claims.Subject, user.Id),
+            new(Claims.Email, user.Email),
+            new(Claims.Name, user.UserName)
+        };
 
-        return SignIn(new ClaimsPrincipal(identity), properties, IdentityConstants.ExternalScheme);
+        var roles = await _userManager.GetRolesAsync(user);
+        claims.AddRange(roles.Select(role => new Claim(Claims.Role, role)));
+
+        if (!string.IsNullOrEmpty(user.GivenName))
+            claims.Add(new Claim(Claims.GivenName, user.GivenName));
+        
+        if (!string.IsNullOrEmpty(user.FamilyName))
+            claims.Add(new Claim(Claims.FamilyName, user.FamilyName));
+
+        return claims;
     }
 }

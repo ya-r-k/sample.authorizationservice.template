@@ -1,0 +1,57 @@
+@model TwoFactorAuthenticationViewModel
+@{
+    ViewData["Title"] = "Двухфакторная аутентификация";
+    ViewData["ActivePage"] = ManageNavPages.TwoFactorAuthentication;
+    Layout = "_ManageLayout";
+}
+
+<div class="ms-Card">
+    <div class="ms-Card-header">
+        <h2 class="ms-FontSize-24 ms-FontWeight-semibold">@ViewData["Title"]</h2>
+    </div>
+    <div class="ms-Card-content">
+        @if (Model.Is2faEnabled)
+        {
+            <div class="ms-MessageBar ms-MessageBar--success">
+                <div class="ms-MessageBar-content">
+                    <i class="ms-Icon ms-Icon--Completed" aria-hidden="true"></i>
+                    <span class="ms-MessageBar-text">Двухфакторная аутентификация включена</span>
+                </div>
+            </div>
+
+            <form method="post" asp-action="EnableTwoFactor" asp-route-enable="false">
+                <button type="submit" class="ms-Button ms-Button--danger">
+                    <i class="ms-Icon ms-Icon--Shield" aria-hidden="true"></i>
+                    <span class="ms-Button-label">Отключить 2FA</span>
+                </button>
+            </form>
+        }
+        else
+        {
+            <div class="ms-MessageBar ms-MessageBar--warning">
+                <div class="ms-MessageBar-content">
+                    <i class="ms-Icon ms-Icon--Warning" aria-hidden="true"></i>
+                    <span class="ms-MessageBar-text">Двухфакторная аутентификация отключена</span>
+                </div>
+            </div>
+
+            <form method="post" asp-action="EnableTwoFactor" asp-route-enable="true">
+                <button type="submit" class="ms-Button ms-Button--primary">
+                    <i class="ms-Icon ms-Icon--Shield" aria-hidden="true"></i>
+                    <span class="ms-Button-label">Включить 2FA</span>
+                </button>
+            </form>
+        }
+
+        @if (Model.HasAuthenticator)
+        {
+            <div class="ms-Grid-row mt-4">
+                <div class="ms-Grid-col ms-sm12">
+                    <h3 class="ms-FontSize-20 ms-FontWeight-semibold">Настроенные приложения-аутентификаторы</h3>
+                    <p class="ms-fontSize-14">У вас настроено приложение-аутентификатор.</p>
+                    <p class="ms-fontSize-14">Коды восстановления: @Model.RecoveryCodesLeft</p>
+                </div>
+            </div>
+        }
+    </div>
+</div> 

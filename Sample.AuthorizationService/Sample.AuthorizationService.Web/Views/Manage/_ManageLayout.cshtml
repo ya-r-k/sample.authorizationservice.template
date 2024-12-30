@@ -1,0 +1,18 @@
+@{
+    Layout = "_Layout";
+}
+
+<div class="ms-Grid mt-4">
+    <div class="ms-Grid-row">
+        <div class="ms-Grid-col ms-sm3">
+            <partial name="_ManageNav" />
+        </div>
+        <div class="ms-Grid-col ms-sm9">
+            @RenderBody()
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    @RenderSection("Scripts", required: false)
+} 

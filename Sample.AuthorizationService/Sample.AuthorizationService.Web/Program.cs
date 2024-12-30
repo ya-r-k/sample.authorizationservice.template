@@ -8,6 +8,8 @@ using Prometheus;
 using Quartz;
 using Serilog;
 using System.Security.Cryptography.X509Certificates;
+using Sample.AuthorizationService.Web.Options;
+using Sample.AuthorizationService.Web.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 var isRunningInContainer = bool.TryParse(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), out var result) && result;
@@ -54,10 +56,30 @@ if (builder.Environment.IsDevelopment())
     });
 }
 
+builder.Services.Configure<TokenCleanupOptions>(
+    builder.Configuration.GetSection("TokenCleanup"));
+
 builder.Services.AddQuartz(options =>
 {
     options.UseSimpleTypeLoader();
     options.UseInMemoryStore();
+
+    var tokenCleanupOptions = builder.Configuration
+        .GetSection("TokenCleanup")
+        .Get<TokenCleanupOptions>();
+
+    var jobKey = JobKey.Create(nameof(RemoveExpiredTokensJob));
+    options.AddJob<RemoveExpiredTokensJob>(jobBuilder => jobBuilder
+        .WithIdentity(jobKey)
+        .DisallowConcurrentExecution());
+
+    options.AddTrigger(triggerBuilder => triggerBuilder
+        .ForJob(jobKey)
+        .WithIdentity($"{nameof(RemoveExpiredTokensJob)}-trigger")
+        .WithSimpleSchedule(scheduleBuilder => scheduleBuilder
+            .WithInterval(tokenCleanupOptions?.Interval ?? TimeSpan.FromHours(12))
+            .RepeatForever())
+        .StartNow());
 });
 
 builder.Services.AddQuartzHostedService(options => options.WaitForJobsToComplete = true);
@@ -92,6 +114,37 @@ builder.Services.AddGraphQLServer()
     .AddQueryType<UserQuery>()
     .AddProjections();
 
+builder.Services.Configure<IdentityOptions>(options =>
+{
+    // Password settings
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireNonAlphanumeric = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequiredLength = 8;
+    options.Password.RequiredUniqueChars = 1;
+
+    // Lockout settings
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.AllowedForNewUsers = true;
+
+    // User settings
+    options.User.RequireUniqueEmail = true;
+});
+
+builder.Services.Configure<CaptchaOptions>(
+    builder.Configuration.GetSection("Captcha"));
+
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<CaptchaService>();
+
+// Add Prometheus metrics
+builder.Services.AddMetricServer(options =>
+{
+    options.Port = 9090;
+});
+
 // Configure the HTTP request pipeline.
 var app = builder.Build();
 
@@ -116,6 +169,7 @@ app.UseHttpsRedirection();
 // Configure Prometheus
 app.UseMetricServer();
 app.UseHttpMetrics();
+app.UseMiddleware<HttpMetricsMiddleware>();
 
 app.UseStaticFiles();
 

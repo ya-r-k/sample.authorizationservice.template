@@ -1,0 +1,73 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+rule_files:
+  - 'rules/alert.rules'
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'auth-service'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['auth-service:80']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'auth-service'
+
+  - job_name: 'sqlserver'
+    static_configs:
+      - targets: ['db:1433']
+    metrics_path: '/metrics'
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'auth-db'
+
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['host.docker.internal:9323']
+
+  - job_name: 'node'
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+storage:
+  tsdb:
+    retention_time: 15d
+    retention_size: 5GB
+
+web:
+  page_title: 'Auth Service Prometheus'
+  external_url: http://localhost:9090
+
+query:
+  max_samples: 50000000
+  timeout: 2m
+  max_concurrent: 20
+
+remote_write:
+  - url: 'http://remote-storage:9201/write'
+    remote_timeout: 30s
+    queue_config:
+      capacity: 500000
+      max_samples_per_send: 100000
+      batch_send_deadline: 5s
+      min_backoff: 30ms
+      max_backoff: 100ms
+
+remote_read:
+  - url: 'http://remote-storage:9201/read'
+    read_recent: true

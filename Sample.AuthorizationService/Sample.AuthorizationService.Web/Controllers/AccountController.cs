@@ -6,7 +6,8 @@ using Sample.AuthorizationService.Web.ViewModels.Account;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Logging;
+using Sample.AuthorizationService.Web.Attributes;
 
 namespace Sample.AuthorizationService.Web.Controllers;
 
@@ -16,10 +17,11 @@ namespace Sample.AuthorizationService.Web.Controllers;
 [Authorize]
 public class AccountController : Controller
 {
-    private readonly UserManager<ApplicationUser> userManager;
-    private readonly SignInManager<ApplicationUser> signInManager;
-    private readonly IEmailSender emailSender;
-    private readonly ISmsSender smsSender;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly SignInManager<ApplicationUser> _signInManager;
+    private readonly IEmailSender _emailSender;
+    private readonly ILogger<AccountController> _logger;
+    private readonly CaptchaService _captchaService;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AccountController"/> class.
@@ -27,17 +29,20 @@ public class AccountController : Controller
     /// <param name="userManager">ASP.NET Identity user manager</param>
     /// <param name="signInManager">ASP.NET Identity sign-in manager</param>
     /// <param name="emailSender">Email sender</param>
-    /// <param name="smsSender">SMS sender</param>
+    /// <param name="logger">Logger</param>
+    /// <param name="captchaService">CAPTCHA service</param>
     public AccountController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         IEmailSender emailSender,
-        ISmsSender smsSender)
+        ILogger<AccountController> logger,
+        CaptchaService captchaService)
     {
-        this.userManager = userManager;
-        this.signInManager = signInManager;
-        this.emailSender = emailSender;
-        this.smsSender = smsSender;
+        _userManager = userManager;
+        _signInManager = signInManager;
+        _emailSender = emailSender;
+        _logger = logger;
+        _captchaService = captchaService;
     }
 
     /// <summary>
@@ -49,7 +54,6 @@ public class AccountController : Controller
     public IActionResult Login(string returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
-
         return View();
     }
 
@@ -61,34 +65,42 @@ public class AccountController : Controller
     [HttpPost]
     [AllowAnonymous]
     [ValidateAntiForgeryToken]
+    [Throttle(seconds: 60, maxRequests: 5)]
     public async Task<IActionResult> Login(LoginViewModel model, string returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
 
-        if (ModelState.IsValid)
+        if (!ModelState.IsValid)
+            return View(model);
+
+        if (!await _captchaService.ValidateAsync(model.CaptchaToken))
         {
-            var result = await signInManager.PasswordSignInAsync(model.Login, model.Password, model.RememberMe, lockoutOnFailure: false);
-
-            if (result.Succeeded)
-            {
-                return RedirectToLocal(returnUrl);
-            }
-            if (result.RequiresTwoFactor)
-            {
-                return RedirectToAction(nameof(SendCode), new { ReturnUrl = returnUrl, model.RememberMe });
-            }
-            if (result.IsLockedOut)
-            {
-                return View("Lockout");
-            }
-            else
-            {
-                ModelState.AddModelError(string.Empty, "Invalid login attempt.");
-
-                return View(model);
-            }
+            ModelState.AddModelError(string.Empty, "Please verify that you are not a robot.");
+            return View(model);
         }
 
+        var result = await _signInManager.PasswordSignInAsync(
+            model.Login, 
+            model.Password, 
+            model.RememberMe, 
+            lockoutOnFailure: true);
+
+        if (result.Succeeded)
+        {
+            _logger.LogInformation("User logged in");
+            return RedirectToLocal(returnUrl);
+        }
+
+        if (result.RequiresTwoFactor)
+            return RedirectToAction(nameof(SendCode), new { ReturnUrl = returnUrl, RememberMe = model.RememberMe });
+
+        if (result.IsLockedOut)
+        {
+            _logger.LogWarning("User account locked out");
+            return View("Lockout");
+        }
+
+        ModelState.AddModelError(string.Empty, "Invalid login attempt.");
         return View(model);
     }
 
@@ -101,7 +113,6 @@ public class AccountController : Controller
     public IActionResult Register(string returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
-
         return View();
     }
 
@@ -113,53 +124,40 @@ public class AccountController : Controller
     [HttpPost]
     [AllowAnonymous]
     [ValidateAntiForgeryToken]
+    [Throttle(seconds: 300, maxRequests: 3)]
     public async Task<IActionResult> Register(RegisterViewModel model, string returnUrl = null)
     {
         ViewData["ReturnUrl"] = returnUrl;
 
-        if (ModelState.IsValid)
+        if (!ModelState.IsValid)
+            return View(model);
+
+        if (!await _captchaService.ValidateAsync(model.CaptchaToken))
         {
-            var user = new ApplicationUser
-            {
-                GivenName = model.GivenName,
-                FamilyName = model.FamilyName,
-                MiddleName = model.MiddleName,
-                Nickname = model.Nickname,
-                Gender = model.Gender,
-                BirthDate = model.BirthDate,
-                Locale = model.Locale,
-                UserName = model.Email,
-                PhoneNumber = model.PhoneNumber,
-                Email = model.Email
-            };
-            var result = await userManager.CreateAsync(user, model.Password);
-
-            if (result.Succeeded)
-            {
-                // For more information on how to enable account confirmation and password reset please visit http://go.microsoft.com/fwlink/?LinkID=532713
-                // Send an email with this link
-                //var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                //var callbackUrl = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, code = code }, protocol: Context.Request.Scheme);
-                //await _emailSender.SendEmailAsync(model.Email, "Confirm your account",
-                //    "Please confirm your account by clicking this link: <a href=\"" + callbackUrl + "\">link</a>");
-
-                result = await userManager.AddToRoleAsync(user, Role.Default.ToString());
-
-                if (result.Succeeded)
-                {
-                    await signInManager.SignInAsync(user, isPersistent: false);
-
-                    return RedirectToLocal(returnUrl);
-                }
-            }
-
-            foreach (var error in result.Errors)
-            {
-                ModelState.AddModelError(string.Empty, error.Description);
-            }
+            ModelState.AddModelError(string.Empty, "Please verify that you are not a robot.");
+            return View(model);
         }
 
-        return View(model);
+        var user = CreateUserFromModel(model);
+        var result = await _userManager.CreateAsync(user, model.Password);
+
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+            return View(model);
+        }
+
+        result = await _userManager.AddToRoleAsync(user, Role.Default.ToString());
+        if (!result.Succeeded)
+        {
+            AddErrors(result);
+            return View(model);
+        }
+
+        await SendEmailConfirmation(user);
+
+        _logger.LogInformation("User created a new account with password");
+        return RedirectToAction(nameof(CheckYourEmail));
     }
 
     /// <summary>
@@ -169,8 +167,8 @@ public class AccountController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> LogOff()
     {
-        await signInManager.SignOutAsync();
-
+        await _signInManager.SignOutAsync();
+        _logger.LogInformation("User logged out");
         return RedirectToAction(nameof(HomeController.Index), "Home");
     }
 
@@ -187,7 +185,7 @@ public class AccountController : Controller
     {
         // Request a redirect to the external login provider.
         var redirectUrl = Url.Action("ExternalLoginCallback", "Account", new { ReturnUrl = returnUrl });
-        var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+        var properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
 
         return new ChallengeResult(provider, properties);
     }
@@ -200,7 +198,7 @@ public class AccountController : Controller
     [AllowAnonymous]
     public async Task<IActionResult> ExternalLoginCallback(string returnUrl = null)
     {
-        var info = await signInManager.GetExternalLoginInfoAsync();
+        var info = await _signInManager.GetExternalLoginInfoAsync();
 
         if (info is null)
         {
@@ -208,7 +206,7 @@ public class AccountController : Controller
         }
 
         // Sign in the user with this external login provider if the user already has a login.
-        var result = await signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false);
+        var result = await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false);
 
         if (result.Succeeded)
         {
@@ -246,7 +244,7 @@ public class AccountController : Controller
         if (ModelState.IsValid)
         {
             // Get the information about the user from the external login provider
-            var info = await signInManager.GetExternalLoginInfoAsync();
+            var info = await _signInManager.GetExternalLoginInfoAsync();
 
             if (info is null)
             {
@@ -259,15 +257,15 @@ public class AccountController : Controller
                 Email = model.Email
             };
 
-            var result = await userManager.CreateAsync(user);
+            var result = await _userManager.CreateAsync(user);
 
             if (result.Succeeded)
             {
-                result = await userManager.AddLoginAsync(user, info);
+                result = await _userManager.AddLoginAsync(user, info);
 
                 if (result.Succeeded)
                 {
-                    await signInManager.SignInAsync(user, isPersistent: false);
+                    await _signInManager.SignInAsync(user, isPersistent: false);
 
                     return RedirectToLocal(returnUrl);
                 }
@@ -293,21 +291,21 @@ public class AccountController : Controller
     [AllowAnonymous]
     public async Task<IActionResult> ConfirmEmail(string userId, string code)
     {
-        if (userId is null || code is null)
+        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(code))
+            return View("Error");
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return View("Error");
+
+        var result = await _userManager.ConfirmEmailAsync(user, code);
+        if (!result.Succeeded)
         {
+            _logger.LogError("Error confirming email for user {UserId}", userId);
             return View("Error");
         }
 
-        var user = await userManager.FindByIdAsync(userId);
-
-        if (user is null)
-        {
-            return View("Error");
-        }
-
-        var result = await userManager.ConfirmEmailAsync(user, code);
-
-        return View(result.Succeeded ? "ConfirmEmail" : "Error");
+        return View("ConfirmEmail");
     }
 
     /// <summary>
@@ -327,29 +325,30 @@ public class AccountController : Controller
     [HttpPost]
     [AllowAnonymous]
     [ValidateAntiForgeryToken]
+    [Throttle(seconds: 300, maxRequests: 3)]
     public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
     {
-        if (ModelState.IsValid)
+        if (!ModelState.IsValid)
+            return View(model);
+
+        if (!await _captchaService.ValidateAsync(model.CaptchaToken))
         {
-            var user = await userManager.FindByEmailAsync(model.Email);
-
-            if (user is null || !await userManager.IsEmailConfirmedAsync(user))
-            {
-                // Don't reveal that the user does not exist or is not confirmed
-                return View("ForgotPasswordConfirmation");
-            }
-
-            // For more information on how to enable account confirmation and password reset please visit http://go.microsoft.com/fwlink/?LinkID=532713
-            // Send an email with this link
-            //var code = await _userManager.GeneratePasswordResetTokenAsync(user);
-            //var callbackUrl = Url.Action("ResetPassword", "Account", new { userId = user.Id, code = code }, protocol: Context.Request.Scheme);
-            //await _emailSender.SendEmailAsync(model.Email, "Reset Password",
-            //   "Please reset your password by clicking here: <a href=\"" + callbackUrl + "\">link</a>");
-            //return View("ForgotPasswordConfirmation");
+            ModelState.AddModelError(string.Empty, "Please verify that you are not a robot.");
+            return View(model);
         }
 
-        // If we got this far, something failed, redisplay form
-        return View(model);
+        var user = await _userManager.FindByEmailAsync(model.Email);
+        if (user == null || !await _userManager.IsEmailConfirmedAsync(user))
+            return View("ForgotPasswordConfirmation");
+
+        var code = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var callbackUrl = Url.Action("ResetPassword", "Account",
+            new { userId = user.Id, code }, Request.Scheme);
+
+        await _emailSender.SendEmailAsync(model.Email, "Reset Password",
+            $"Please reset your password by clicking here: <a href='{callbackUrl}'>link</a>");
+
+        return View("ForgotPasswordConfirmation");
     }
 
     /// <summary>
@@ -370,7 +369,7 @@ public class AccountController : Controller
     [AllowAnonymous]
     public IActionResult ResetPassword(string code = null)
     {
-        return code is null ? View("Error") : View();
+        return code == null ? View("Error") : View();
     }
 
     /// <summary>
@@ -383,30 +382,17 @@ public class AccountController : Controller
     public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
     {
         if (!ModelState.IsValid)
-        {
             return View(model);
-        }
 
-        var user = await userManager.FindByNameAsync(model.Email);
+        var user = await _userManager.FindByEmailAsync(model.Email);
+        if (user == null)
+            return RedirectToAction(nameof(ResetPasswordConfirmation));
 
-        if (user is null)
-        {
-            // Don't reveal that the user does not exist
-            return RedirectToAction(nameof(AccountController.ResetPasswordConfirmation), "Account");
-        }
-
-        var result = await userManager.ResetPasswordAsync(user, model.Code, model.Password);
-
+        var result = await _userManager.ResetPasswordAsync(user, model.Code, model.Password);
         if (result.Succeeded)
-        {
-            return RedirectToAction(nameof(AccountController.ResetPasswordConfirmation), "Account");
-        }
+            return RedirectToAction(nameof(ResetPasswordConfirmation));
 
-        foreach (var error in result.Errors)
-        {
-            ModelState.AddModelError(string.Empty, error.Description);
-        }
-
+        AddErrors(result);
         return View();
     }
 
@@ -429,14 +415,14 @@ public class AccountController : Controller
     [AllowAnonymous]
     public async Task<ActionResult> SendCode(string returnUrl = null, bool rememberMe = false)
     {
-        var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
+        var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
 
         if (user is null)
         {
             return View("Error");
         }
 
-        var userFactors = await userManager.GetValidTwoFactorProvidersAsync(user);
+        var userFactors = await _userManager.GetValidTwoFactorProvidersAsync(user);
         var factorOptions = userFactors.Select(purpose => new SelectListItem { Text = purpose, Value = purpose }).ToList();
 
         return View(new SendCodeViewModel
@@ -461,7 +447,7 @@ public class AccountController : Controller
             return View();
         }
 
-        var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
+        var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
 
         if (user is null)
         {
@@ -469,7 +455,7 @@ public class AccountController : Controller
         }
 
         // Generate the token and send it
-        var code = await userManager.GenerateTwoFactorTokenAsync(user, model.SelectedProvider);
+        var code = await _userManager.GenerateTwoFactorTokenAsync(user, model.SelectedProvider);
 
         if (string.IsNullOrWhiteSpace(code))
         {
@@ -480,11 +466,11 @@ public class AccountController : Controller
 
         if (model.SelectedProvider == "Email")
         {
-            await emailSender.SendEmailAsync(await userManager.GetEmailAsync(user), "Security Code", message);
+            await _emailSender.SendEmailAsync(await _userManager.GetEmailAsync(user), "Security Code", message);
         }
         else if (model.SelectedProvider == "Phone")
         {
-            await smsSender.SendSmsAsync(await userManager.GetPhoneNumberAsync(user), message);
+            await _emailSender.SendSmsAsync(await _userManager.GetPhoneNumberAsync(user), message);
         }
 
         return RedirectToAction(nameof(VerifyCode), new { Provider = model.SelectedProvider, model.ReturnUrl, model.RememberMe });
@@ -501,7 +487,7 @@ public class AccountController : Controller
     public async Task<IActionResult> VerifyCode(string provider, bool rememberMe, string returnUrl = null)
     {
         // Require that the user has already logged in via username/password or external login
-        var user = await signInManager.GetTwoFactorAuthenticationUserAsync();
+        var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
 
         if (user is null)
         {
@@ -533,7 +519,7 @@ public class AccountController : Controller
         // The following code protects for brute force attacks against the two factor codes.
         // If a user enters incorrect codes for a specified amount of time then the user account
         // will be locked out for a specified amount of time.
-        var result = await signInManager.TwoFactorSignInAsync(model.Provider, model.Code, model.RememberMe, model.RememberBrowser);
+        var result = await _signInManager.TwoFactorSignInAsync(model.Provider, model.Code, model.RememberMe, model.RememberBrowser);
 
         if (result.Succeeded)
         {
@@ -552,15 +538,53 @@ public class AccountController : Controller
         }
     }
 
+    [HttpGet]
+    [AllowAnonymous]
+    public IActionResult CheckYourEmail()
+    {
+        return View();
+    }
+
+    private ApplicationUser CreateUserFromModel(RegisterViewModel model)
+    {
+        return new ApplicationUser
+        {
+            GivenName = model.GivenName,
+            FamilyName = model.FamilyName,
+            MiddleName = model.MiddleName,
+            Nickname = model.Nickname,
+            Gender = model.Gender,
+            BirthDate = model.BirthDate,
+            Locale = model.Locale,
+            UserName = model.Email,
+            PhoneNumber = model.PhoneNumber,
+            Email = model.Email
+        };
+    }
+
+    private async Task SendEmailConfirmation(ApplicationUser user)
+    {
+        var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var callbackUrl = Url.Action("ConfirmEmail", "Account",
+            new { userId = user.Id, code }, Request.Scheme);
+
+        await _emailSender.SendEmailAsync(user.Email, "Confirm your account",
+            $"Please confirm your account by clicking this link: <a href='{callbackUrl}'>link</a>");
+    }
+
+    private void AddErrors(IdentityResult result)
+    {
+        foreach (var error in result.Errors)
+        {
+            ModelState.AddModelError(string.Empty, error.Description);
+        }
+    }
+
     private IActionResult RedirectToLocal(string returnUrl)
     {
         if (Url.IsLocalUrl(returnUrl))
-        {
             return Redirect(returnUrl);
-        }
-        else
-        {
-            return RedirectToAction(nameof(HomeController.Index), "Home");
-        }
+        
+        return RedirectToAction(nameof(HomeController.Index), "Home");
     }
 }
